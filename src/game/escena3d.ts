@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { liberar } from '../rendimiento';
 import { ALTO_MUNDO, ANCHO_VISTA, SUELO_Y, type Mision, type Rect, type Tema } from '../core/level';
 import { animateWalk, createAvatar, DEFAULT_LOOK, type Look } from './characters';
 import type { Enemigo, Mundo, Rehen } from './mundo';
@@ -93,6 +95,35 @@ function tanque(color: number, ancho: number, alto: number): { grupo: THREE.Grou
   return { grupo: g, torreta };
 }
 
+/**
+ * Fusiona por material todas las mallas estáticas de un grupo: el mapa de una misión pasa
+ * de cientos de llamadas de dibujo a unas pocas.
+ */
+function fusionar(grupo: THREE.Group) {
+  grupo.updateMatrixWorld(true);
+  const lotes = new Map<string, { material: THREE.Material; sombra: boolean; geos: THREE.BufferGeometry[] }>();
+  grupo.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || Array.isArray(m.material)) return;
+    const g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+    g.applyMatrix4(m.matrixWorld);
+    const clave = `${m.material.uuid}|${m.castShadow}`;
+    if (!lotes.has(clave)) lotes.set(clave, { material: m.material, sombra: m.castShadow, geos: [] });
+    lotes.get(clave)!.geos.push(g);
+  });
+  liberar(grupo);
+  grupo.clear();
+  for (const { material, sombra, geos } of lotes.values()) {
+    const unida = mergeGeometries(geos);
+    for (const g of geos) g.dispose();
+    if (!unida) continue;
+    const malla = new THREE.Mesh(unida, material);
+    malla.castShadow = sombra;
+    malla.receiveShadow = true;
+    grupo.add(malla);
+  }
+}
+
 class Reserva {
   private lista: THREE.Object3D[] = [];
   private usadas = 0;
@@ -155,6 +186,21 @@ export class Escena3D {
     this.recogibles = new Reserva(this.escena, () => malla(new THREE.BoxGeometry(0.7, 0.7, 0.7), mat(0x2b6cff)));
   }
 
+  private tamSombras = -1;
+
+  /** Tamaño del mapa de sombras según la calidad (0 = sin sombras). Solo cambia el estado si cambia. */
+  sombras(tam: number) {
+    if (tam === this.tamSombras) return;
+    this.tamSombras = tam;
+    this.renderer.shadowMap.enabled = tam > 0;
+    if (tam > 0) {
+      this.sol.shadow.mapSize.set(tam, tam);
+      this.sol.shadow.map?.dispose();
+      this.sol.shadow.map = null;
+    }
+    for (const m of cacheMat.values()) m.needsUpdate = true;
+  }
+
   ajustar(ancho: number, alto: number, dpr: number) {
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(ancho, alto, false);
@@ -164,12 +210,22 @@ export class Escena3D {
 
   private construir(m: Mundo) {
     const mision = m.mision;
+    liberar(this.mapa);
     this.mapa.clear();
-    for (const g of this.enemigos.values()) this.escena.remove(g);
+    for (const g of this.enemigos.values()) {
+      this.escena.remove(g);
+      liberar(g);
+    }
     this.enemigos.clear();
-    for (const g of this.rehenes.values()) this.escena.remove(g);
+    for (const g of this.rehenes.values()) {
+      this.escena.remove(g);
+      liberar(g);
+    }
     this.rehenes.clear();
-    if (this.vehiculo) this.escena.remove(this.vehiculo.grupo);
+    if (this.vehiculo) {
+      this.escena.remove(this.vehiculo.grupo);
+      liberar(this.vehiculo.grupo);
+    }
     this.vehiculo = null;
 
     const pal = PALETAS[mision.tema];
@@ -254,6 +310,7 @@ export class Escena3D {
         this.mapa.add(malla(new THREE.BoxGeometry(3, 1.2, 0.15), mat(pal.cerca), xc, 0.6, FONDO_Z - 0.6));
       }
     }
+    fusionar(this.mapa);
     this.misionActual = mision;
   }
 
@@ -327,12 +384,14 @@ export class Escena3D {
     this.camara.lookAt(cx, cy, 0);
     this.sol.position.set(cx + 8, 20, 14);
     this.sol.target.position.set(cx, 0, 0);
-    this.renderer.shadowMap.enabled = efectos;
 
     // Jugador
     const clave = JSON.stringify(look);
     if (clave !== this.lookActual || !this.jugador) {
-      if (this.jugador) this.escena.remove(this.jugador.group);
+      if (this.jugador) {
+        this.escena.remove(this.jugador.group);
+        liberar(this.jugador.group);
+      }
       this.jugador = avatarConArma(look, 0.85);
       this.escena.add(this.jugador.group);
       this.lookActual = clave;
@@ -355,6 +414,7 @@ export class Escena3D {
     if (v && !v.destruido) {
       if (this.vehiculo && this.vehiculo.grupo.userData.look !== clave) {
         this.escena.remove(this.vehiculo.grupo);
+        liberar(this.vehiculo.grupo);
         this.vehiculo = null;
       }
       if (!this.vehiculo) {
@@ -382,6 +442,7 @@ export class Escena3D {
     for (const [e, g] of this.enemigos) {
       if (!vivos.has(e)) {
         this.escena.remove(g);
+        liberar(g);
         this.enemigos.delete(e);
       }
     }
@@ -410,6 +471,7 @@ export class Escena3D {
     for (const [r, g] of this.rehenes) {
       if (!rehenes.has(r)) {
         this.escena.remove(g);
+        liberar(g);
         this.rehenes.delete(r);
       }
     }

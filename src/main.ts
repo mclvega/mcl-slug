@@ -7,12 +7,12 @@ import { Entrada } from './core/input';
 import { ALTO_MUNDO, ANCHO_VISTA } from './core/level';
 import { iniciarBucle } from './core/loop';
 import { iniciarPantallaCompleta } from './fullscreen';
-import { Escena3D } from './game/escena3d';
+import type { Escena3D } from './game/escena3d';
+import { Rendimiento, tamanoSombras } from './rendimiento';
 import { Mundo } from './game/mundo';
 import { agregarRecord, limpiarNombre } from './storage';
 import { panelConfiguracion } from './ui/configuracion';
 import { boton, h, mostrarPanel } from './ui/dom';
-import { pantallaPersonaje } from './ui/personaje';
 
 const lienzo = document.getElementById('lienzo') as HTMLCanvasElement;
 const ctx = lienzo.getContext('2d')!;
@@ -20,7 +20,12 @@ const ctx = lienzo.getContext('2d')!;
 const lienzo3d = document.createElement('canvas');
 lienzo3d.id = 'lienzo3d';
 lienzo.before(lienzo3d);
-const escena = new Escena3D(lienzo3d);
+let escena: Escena3D | null = null;
+/** El motor 3D (three.js) se descarga aparte: el menú aparece sin esperarlo. */
+let modulo3d: Promise<typeof import('./game/escena3d')> | null = null;
+const cargar3d = () => (modulo3d ??= import('./game/escena3d'));
+/** Calidad automática, límite de FPS y monitor `?perf`. */
+const rend = new Rendimiento(() => app.g.config.calidad, () => app.g.config.limiteFps, () => ajustarLienzo());
 const entrada = new Entrada(
   [
     { nombre: 'granada', teclas: ['KeyL', 'KeyC'], mando: 1, etiqueta: '💣' },
@@ -42,7 +47,7 @@ function ajustarLienzo() {
     c.style.width = `${ANCHO_VISTA * escala}px`;
     c.style.height = `${ALTO_MUNDO * escala}px`;
   }
-  escena.ajustar(ANCHO_VISTA * escala, ALTO_MUNDO * escala, Math.min(dpr, 1.5));
+  escena?.ajustar(ANCHO_VISTA * escala, ALTO_MUNDO * escala, rend.ratio);
   lienzo.style.width = `${ANCHO_VISTA * escala}px`;
   lienzo.style.height = `${ALTO_MUNDO * escala}px`;
   lienzo.width = Math.round(ANCHO_VISTA * escala * dpr);
@@ -102,7 +107,7 @@ function menu() {
       boton('Jugar desde la misión 1', () => jugar(1), { variante: 'primario', icono: '▶' }),
       max > 1 ? boton(`Continuar en la misión ${max}`, () => jugar(max), { icono: '⏩' }) : null,
       boton(`Dificultad: ${MODOS[app.g.config.dificultad].nombre}`, () => configuracion(), { icono: '🎯' }),
-      boton('Personaje', () => pantallaPersonaje(menu), { icono: '👕' }),
+      boton('Personaje', () => void import('./ui/personaje').then((m) => m.pantallaPersonaje(menu)), { icono: '👕' }),
       boton('Récords', records, { icono: '🏆' }),
       boton('Configuración', () => configuracion(), { icono: '⚙️' }),
       h('p', { class: 'texto-suave ayuda-texto', text: AYUDA }),
@@ -126,8 +131,13 @@ function records() {
   mostrarPanel(h('div', { class: 'tarjeta' }, h('h2', { text: '🏆 Récords' }), ...filas, boton('Volver', menu, { icono: '←' })));
 }
 
-function jugar(mision: number) {
+async function jugar(mision: number) {
   audio.iniciar();
+  if (!escena) {
+    const { Escena3D } = await cargar3d();
+    escena = new Escena3D(lienzo3d);
+    ajustarLienzo();
+  }
   mundo = new Mundo(() => MODOS[app.g.config.dificultad], { misionCompleta, fin }, mision);
   mostrarPanel(null);
   jugando(true);
@@ -206,17 +216,23 @@ addEventListener('pointerdown', () => audio.iniciar());
 let fps = 60;
 let ultimo = performance.now();
 iniciarBucle(
-  (dt) => {
-    entrada.actualizar();
-    mundo?.actualizar(dt, entrada);
-  },
+  (dt) =>
+    rend.medir('logica', () => {
+      entrada.actualizar();
+      mundo?.actualizar(dt, entrada);
+    }),
   () => {
     const ahora = performance.now();
+    if (!rend.debeDibujar(ahora, !mundo || mundo.pausada)) return;
     fps = fps * 0.9 + (1000 / Math.max(1, ahora - ultimo)) * 0.1;
     ultimo = ahora;
     ctx.clearRect(0, 0, ANCHO_VISTA, ALTO_MUNDO);
-    if (mundo) {
-      escena.dibujar(mundo, app.g.look, !app.g.config.animacionesReducidas);
+    if (mundo && escena) {
+      const e = escena;
+      const m = mundo;
+      const efectos = !app.g.config.animacionesReducidas;
+      e.sombras(efectos ? tamanoSombras(app.g.config.calidad) : 0);
+      rend.medir('render', () => e.dibujar(m, app.g.look, efectos));
       mundo.dibujarHud(ctx);
     } else {
       ctx.fillStyle = '#000';
@@ -227,13 +243,17 @@ iniciarBucle(
       ctx.font = '10px monospace';
       ctx.fillText(`${Math.round(fps)} FPS`, 6, ALTO_MUNDO - 6);
     }
+    rend.actualizarMonitor(escena?.renderer ?? null);
   },
 );
 
-if (import.meta.env.DEV && location.search.includes('demo')) jugar(Number(new URLSearchParams(location.search).get('mision')) || 1);
+if (import.meta.env.DEV && location.search.includes('demo')) void jugar(Number(new URLSearchParams(location.search).get('mision')) || 1);
 else if (app.g.nombre) menu();
 else bienvenida();
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => undefined));
 }
+
+// Con el menú ya visible, se descarga el motor 3D en segundo plano para que «Jugar» sea instantáneo.
+addEventListener('load', () => setTimeout(() => void cargar3d(), 800));
