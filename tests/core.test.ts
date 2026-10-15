@@ -79,4 +79,22 @@ describe('mundo simulado', () => {
     }
     expect(m.puntos).toBeGreaterThan(0);
   });
+
+  it('se sube al tanque, se baja con abajo + salto y no vuelve a subir al instante', () => {
+    const m = new Mundo(() => MODOS.normal, { misionCompleta: () => undefined, fin: () => undefined }, 2, 3);
+    m.enemigos = [];
+    const v = { x: 100, y: 200, w: 38, h: 30, vx: 0, vy: 0, enSuelo: true, vida: 6, vidaMax: 6, ocupado: false, cd: 0, destruido: false };
+    m.vehiculo = v;
+    Object.assign(m.jugador, { x: 105, y: 204, invul: 0 });
+    const pulsados = new Set<string>();
+    const entrada = (y: number) => ({ x: 0, y, activo: (n: string) => pulsados.has(n), pulsado: (n: string) => pulsados.has(n) }) as unknown as Entrada;
+    m.actualizar(PASO, entrada(0));
+    expect(v.ocupado).toBe(true);
+    pulsados.add('saltar');
+    m.actualizar(PASO, entrada(1));
+    expect(v.ocupado).toBe(false);
+    pulsados.clear();
+    for (let i = 0; i < 5; i++) m.actualizar(PASO, entrada(0));
+    expect(v.ocupado).toBe(false);
+  });
 });

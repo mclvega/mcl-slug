@@ -1,7 +1,7 @@
 {
   "name": "mcl-slug",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Acción 2D de disparos con desplazamiento lateral, rehenes, armas y jefes.",
   "type": "module",
   "scripts": {

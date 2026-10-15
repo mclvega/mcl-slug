@@ -130,6 +130,8 @@ export class Mundo {
     x: 40, y: 150, w: 14, h: 26, vx: 0, vy: 0, enSuelo: false,
     mira: 1 as 1 | -1, golpes: 1, invul: 0, cd: 0, arma: 'pistola' as Arma, municion: Infinity, granadas: 10,
     agachado: false, paso: 0, apunteX: 1, apunteY: 0,
+    /** Tiempo tras bajar del tanque en el que no se vuelve a subir solo. */
+    sinSubir: 0,
   };
   camX = 0;
   private siguienteSpawn = 0;
@@ -298,6 +300,13 @@ export class Mundo {
       j.h = agachar ? 16 : 26;
     }
 
+    j.sinSubir = Math.max(0, j.sinSubir - dt);
+    // Abajo + saltar dentro del tanque: bajarse de un salto.
+    if (v && entrada.y > 0.5 && entrada.pulsado('saltar')) {
+      this.bajarDelTanque(v);
+      return;
+    }
+
     const cuerpo: Cuerpo = v ?? j;
     const velocidad = v ? 80 : j.agachado ? 40 : 95;
     cuerpo.vx = Math.abs(entrada.x) > 0.3 ? Math.sign(entrada.x) * velocidad : 0;
@@ -317,6 +326,10 @@ export class Mundo {
     if (v) {
       j.x = v.x + 12;
       j.y = v.y - 6;
+      j.vx = v.vx;
+      j.vy = v.vy;
+      j.enSuelo = v.enSuelo;
+      this.aplastar(v);
     }
 
     // Disparo.
@@ -355,10 +368,13 @@ export class Mundo {
     if (v) v.cd -= dt;
 
     // Subir al vehículo.
-    if (!v && this.vehiculo && !this.vehiculo.destruido && !this.vehiculo.ocupado && choca(j, this.vehiculo)) {
+    if (!v && j.sinSubir <= 0 && this.vehiculo && !this.vehiculo.destruido && !this.vehiculo.ocupado && choca(j, this.vehiculo)) {
       this.vehiculo.ocupado = true;
+      this.vehiculo.vx = 0;
+      j.agachado = false;
+      j.h = 26;
       audio.efecto('recoger');
-      this.avisar('¡Tanque! · Granada = cañón');
+      this.avisar('¡Tanque! · Granada = cañón · Abajo + salto = bajar');
     }
 
     // Caer a un foso.
@@ -369,6 +385,42 @@ export class Mundo {
       }
       this.perderVida(true);
     }
+  }
+
+  private bajarDelTanque(v: Vehiculo) {
+    const j = this.jugador;
+    v.ocupado = false;
+    v.vx = 0;
+    j.x = v.x + v.w / 2 - j.w / 2;
+    j.y = v.y - j.h;
+    j.vx = 0;
+    j.vy = -300;
+    j.enSuelo = false;
+    j.sinSubir = 0.8;
+  }
+
+  /** El tanque del jugador atropella a los soldados que toca al avanzar. */
+  private aplastar(v: Vehiculo) {
+    if (v.vx === 0) return;
+    for (const e of this.enemigos) {
+      if ((e.tipo === 'soldado' || e.tipo === 'granadero') && e.vida > 0 && choca(v, e)) {
+        e.vida = 0;
+        this.chispas(e.x + e.w / 2, e.y + e.h / 2, 10, '#c0392b');
+      }
+    }
+  }
+
+  /** Velocidad horizontal para que un proyectil con gravedad caiga en (tx, ty). */
+  private tiroParabolico(x: number, y: number, tx: number, ty: number, vy: number, maxVx: number): number {
+    const g = GRAVEDAD * 0.8;
+    const t = (-vy + Math.sqrt(Math.max(0, vy * vy + 2 * g * (ty - y)))) / g;
+    return Math.max(-maxVx, Math.min(maxVx, (tx - x) / Math.max(0.2, t)));
+  }
+
+  /** ¿Hay suelo delante del enemigo? Así no se tiran a los fosos. */
+  private sueloDelante(e: Enemigo, dir: number): boolean {
+    const x = dir > 0 ? e.x + e.w + 4 : e.x - 4;
+    return this.solidoEn(x, e.y + e.h + 4) || this.mision.plataformas.some((p) => x >= p.x && x <= p.x + p.w && Math.abs(p.y - (e.y + e.h)) < 3);
   }
 
   private disparar(x: number, y: number, dx: number, dy: number, arma: Arma) {
@@ -405,6 +457,9 @@ export class Mundo {
   private actualizarEnemigos(dt: number) {
     const j = this.jugador;
     const espera = this.modoMision.esperaEnemigos / Math.sqrt(this.escala);
+    const blanco = this.cuerpoJugador();
+    const bx = blanco.x + blanco.w / 2;
+    const by = blanco.y + blanco.h / 2;
     for (const e of this.enemigos) {
       e.t += dt;
       e.cd -= dt;
@@ -419,11 +474,12 @@ export class Mundo {
         case 'soldado':
         case 'granadero': {
           e.vx = dist > 170 && dist < 320 ? e.mira * 45 : dist < 90 ? -e.mira * 35 : 0;
+          if (e.vx !== 0 && e.enSuelo && !this.sueloDelante(e, e.vx)) e.vx = 0;
           this.mover(e, dt);
           if (e.cd <= 0 && dist < 300) {
             e.cd = (e.tipo === 'soldado' ? 1.8 : 2.6) * espera;
             if (e.tipo === 'soldado') this.balaEnemiga(cx, e.y + 9, e.mira * 150, 0, false, 0);
-            else this.balaEnemiga(cx, e.y, e.mira * Math.min(220, dist * 0.9 + 30), -230, true, 30);
+            else this.balaEnemiga(cx, e.y, this.tiroParabolico(cx, e.y, bx, by, -230, 240), -230, true, 30);
           }
           break;
         }
@@ -434,14 +490,32 @@ export class Mundo {
             this.balaEnemiga(cx, cy, Math.cos(a) * 160, Math.sin(a) * 160, false, 0);
           }
           break;
-        case 'tanque':
-          e.vx = dist > 160 && dist < 380 ? e.mira * 25 : 0;
+        case 'tanque': {
+          // Avanza hasta su distancia de tiro y retrocede si lo tienen encima.
+          const dxc = bx - cx;
+          e.mira = dxc > 0 ? 1 : -1;
+          const lejos = Math.abs(dxc);
+          e.vx = lejos > 200 && lejos < 380 ? e.mira * 30 : lejos < 90 ? -e.mira * 30 : 0;
+          if (e.vx !== 0 && e.enSuelo && !this.sueloDelante(e, e.vx)) e.vx = 0;
           this.mover(e, dt);
-          if (e.cd <= 0 && dist < 360) {
+          if (e.cd <= 0 && lejos < 360) {
             e.cd = 3 * espera;
-            this.balaEnemiga(cx + e.mira * 24, e.y + 6, e.mira * Math.min(260, dist + 40), -160, true, 34);
+            const sx = cx + e.mira * (e.w / 2 + 4);
+            const sy = e.y + 4;
+            if (lejos < 70) this.balaEnemiga(sx, e.y + e.h * 0.55, e.mira * 220, 0, false, 0);
+            else this.balaEnemiga(sx, sy, this.tiroParabolico(sx, sy, bx, by, -200, 320), -200, true, 34);
+          }
+          // Embestir: tocar un tanque enemigo hace daño (salvo con el tanque propio, que frena).
+          if (choca(e, blanco)) {
+            const v = this.vehiculo?.ocupado ? this.vehiculo : null;
+            if (v) {
+              v.x = v.x + v.w / 2 < cx ? e.x - v.w : e.x + e.w;
+              e.vx = 0;
+            }
+            this.herirJugador();
           }
           break;
+        }
         case 'dron':
           e.x += Math.sign(dx) * Math.min(dist, 60) * dt;
           e.y += Math.sin(e.t * 3) * 20 * dt;
@@ -717,6 +791,14 @@ export class Mundo {
     const arma = this.vehiculo?.ocupado ? 'Tanque' : `${ARMAS[j.arma].nombre}${Number.isFinite(j.municion) ? ` ${j.municion}` : ''}`;
     ctx.fillText(arma, 270, 11);
     ctx.fillText(`💣 ${j.granadas}`, 400, 11);
+
+    const v = this.vehiculo?.ocupado ? this.vehiculo : null;
+    if (v) {
+      ctx.fillStyle = '#000a';
+      ctx.fillRect(270, 17, 60, 4);
+      ctx.fillStyle = '#7ad04a';
+      ctx.fillRect(270, 17, (60 * Math.max(0, v.vida)) / v.vidaMax, 4);
+    }
 
     const jefe = this.enemigos.find((e) => e.tipo === 'jefe');
     if (jefe) {

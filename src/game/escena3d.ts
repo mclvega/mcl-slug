@@ -13,6 +13,17 @@ const FRENTE_Z = 1.2;
 const FOV = 35;
 const DISTANCIA = ALTO_MUNDO / U / 2 / Math.tan(((FOV / 2) * Math.PI) / 180);
 
+const cacheHex = new Map<string, number>();
+/** Convierte '#rrggbb' a número una sola vez por color. */
+function hex(color: string): number {
+  let v = cacheHex.get(color);
+  if (v === undefined) {
+    v = new THREE.Color(color).getHex();
+    cacheHex.set(color, v);
+  }
+  return v;
+}
+
 const cacheMat = new Map<string, THREE.Material>();
 function mat(color: number, basico = false, emisivo = 0): THREE.Material {
   const clave = `${color}|${basico}|${emisivo}`;
@@ -342,6 +353,10 @@ export class Escena3D {
 
     // Vehículo
     if (v && !v.destruido) {
+      if (this.vehiculo && this.vehiculo.grupo.userData.look !== clave) {
+        this.escena.remove(this.vehiculo.grupo);
+        this.vehiculo = null;
+      }
       if (!this.vehiculo) {
         this.vehiculo = tanque(0x5a6a3a, X(v.w), Y(0) - Y(v.h));
         const piloto = createAvatar(look);
@@ -349,6 +364,7 @@ export class Escena3D {
         piloto.group.position.set(0, (Y(0) - Y(v.h)) * 0.85, 0);
         piloto.group.name = 'piloto';
         this.vehiculo.grupo.add(piloto.group);
+        this.vehiculo.grupo.userData.look = clave;
         this.escena.add(this.vehiculo.grupo);
       }
       const g = this.vehiculo.grupo;
@@ -373,7 +389,12 @@ export class Escena3D {
       const g = this.modeloEnemigo(e);
       g.position.set(X(e.x + e.w / 2), Y(e.y + e.h), 0);
       const mira = e.mira;
-      if (e.tipo === 'tanque' || e.tipo === 'jefe') g.rotation.y = mira > 0 ? 0 : Math.PI;
+      if (e.tipo === 'tanque' || e.tipo === 'jefe') {
+        g.rotation.y = mira > 0 ? 0 : Math.PI;
+        const torreta = g.userData.torreta as THREE.Group;
+        const dx = Math.abs(j.x - e.x) || 1;
+        torreta.rotation.z = Math.max(0, Math.min(0.6, Math.atan2(e.y - j.y + 40, dx)));
+      }
       else g.rotation.y = mira > 0 ? Math.PI / 2 : -Math.PI / 2;
       g.scale.setScalar(e.flash > 0 ? 1.12 : 1);
       const cuerpo = g.userData.cuerpo as THREE.Group | undefined;
@@ -427,7 +448,7 @@ export class Escena3D {
       const o = this.balas.tomar() as THREE.Mesh;
       o.position.set(X(b.x), Y(b.y), 0.1);
       o.scale.setScalar(Math.max(0.08, b.r / U));
-      o.material = mat(new THREE.Color(b.color).getHex(), true);
+      o.material = mat(hex(b.color), true);
     }
     this.balas.fin();
     this.particulas.inicio();
@@ -435,7 +456,7 @@ export class Escena3D {
       const o = this.particulas.tomar() as THREE.Mesh;
       o.position.set(X(p.x), Y(p.y), 0.3);
       o.scale.setScalar(p.tam / U);
-      o.material = mat(new THREE.Color(p.color).getHex(), true);
+      o.material = mat(hex(p.color), true);
     }
     this.particulas.fin();
 
