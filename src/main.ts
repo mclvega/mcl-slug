@@ -7,13 +7,20 @@ import { Entrada } from './core/input';
 import { ALTO_MUNDO, ANCHO_VISTA } from './core/level';
 import { iniciarBucle } from './core/loop';
 import { iniciarPantallaCompleta } from './fullscreen';
+import { Escena3D } from './game/escena3d';
 import { Mundo } from './game/mundo';
 import { agregarRecord, limpiarNombre } from './storage';
 import { panelConfiguracion } from './ui/configuracion';
 import { boton, h, mostrarPanel } from './ui/dom';
+import { pantallaPersonaje } from './ui/personaje';
 
 const lienzo = document.getElementById('lienzo') as HTMLCanvasElement;
 const ctx = lienzo.getContext('2d')!;
+// La escena se dibuja en 3D debajo; el lienzo 2D lleva solo el HUD.
+const lienzo3d = document.createElement('canvas');
+lienzo3d.id = 'lienzo3d';
+lienzo.before(lienzo3d);
+const escena = new Escena3D(lienzo3d);
 const entrada = new Entrada(
   [
     { nombre: 'granada', teclas: ['KeyL', 'KeyC'], mando: 1, etiqueta: '💣' },
@@ -31,6 +38,11 @@ if (matchMedia('(pointer: coarse)').matches) document.body.classList.add('tactil
 function ajustarLienzo() {
   const escala = Math.min(innerWidth / ANCHO_VISTA, innerHeight / ALTO_MUNDO);
   const dpr = Math.min(2, devicePixelRatio || 1);
+  for (const c of [lienzo, lienzo3d]) {
+    c.style.width = `${ANCHO_VISTA * escala}px`;
+    c.style.height = `${ALTO_MUNDO * escala}px`;
+  }
+  escena.ajustar(ANCHO_VISTA * escala, ALTO_MUNDO * escala, Math.min(dpr, 1.5));
   lienzo.style.width = `${ANCHO_VISTA * escala}px`;
   lienzo.style.height = `${ALTO_MUNDO * escala}px`;
   lienzo.width = Math.round(ANCHO_VISTA * escala * dpr);
@@ -90,6 +102,7 @@ function menu() {
       boton('Jugar desde la misión 1', () => jugar(1), { variante: 'primario', icono: '▶' }),
       max > 1 ? boton(`Continuar en la misión ${max}`, () => jugar(max), { icono: '⏩' }) : null,
       boton(`Dificultad: ${MODOS[app.g.config.dificultad].nombre}`, () => configuracion(), { icono: '🎯' }),
+      boton('Personaje', () => pantallaPersonaje(menu), { icono: '👕' }),
       boton('Récords', records, { icono: '🏆' }),
       boton('Configuración', () => configuracion(), { icono: '⚙️' }),
       h('p', { class: 'texto-suave ayuda-texto', text: AYUDA }),
@@ -201,9 +214,12 @@ iniciarBucle(
     const ahora = performance.now();
     fps = fps * 0.9 + (1000 / Math.max(1, ahora - ultimo)) * 0.1;
     ultimo = ahora;
-    if (mundo) mundo.dibujar(ctx, !app.g.config.animacionesReducidas);
-    else {
-      ctx.fillStyle = '#120d08';
+    ctx.clearRect(0, 0, ANCHO_VISTA, ALTO_MUNDO);
+    if (mundo) {
+      escena.dibujar(mundo, app.g.look, !app.g.config.animacionesReducidas);
+      mundo.dibujarHud(ctx);
+    } else {
+      ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, ANCHO_VISTA, ALTO_MUNDO);
     }
     if (app.g.config.mostrarFps) {
@@ -214,7 +230,8 @@ iniciarBucle(
   },
 );
 
-if (app.g.nombre) menu();
+if (import.meta.env.DEV && location.search.includes('demo')) jugar(Number(new URLSearchParams(location.search).get('mision')) || 1);
+else if (app.g.nombre) menu();
 else bienvenida();
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {

@@ -7,7 +7,7 @@ import { ARMAS, ARMAS_ESPECIALES, direccionDisparo, type Arma } from '../core/we
 
 const GRAVEDAD = 900;
 
-type TipoEnemigo = 'soldado' | 'granadero' | 'torreta' | 'tanque' | 'dron' | 'jefe';
+export type TipoEnemigo = 'soldado' | 'granadero' | 'torreta' | 'tanque' | 'dron' | 'jefe';
 
 interface Cuerpo extends Rect {
   vx: number;
@@ -15,7 +15,7 @@ interface Cuerpo extends Rect {
   enSuelo: boolean;
 }
 
-interface Enemigo extends Cuerpo {
+export interface Enemigo extends Cuerpo {
   tipo: TipoEnemigo;
   vida: number;
   vidaMax: number;
@@ -26,7 +26,7 @@ interface Enemigo extends Cuerpo {
   invocar: number;
 }
 
-interface Proyectil {
+export interface Proyectil {
   x: number;
   y: number;
   vx: number;
@@ -42,17 +42,17 @@ interface Proyectil {
   golpeados?: Set<Enemigo>;
 }
 
-interface Rehen extends Rect {
+export interface Rehen extends Rect {
   libre: boolean;
   t: number;
 }
 
-interface Recogible extends Cuerpo {
+export interface Recogible extends Cuerpo {
   tipo: 'arma' | 'granadas';
   arma?: Arma;
 }
 
-interface Vehiculo extends Cuerpo {
+export interface Vehiculo extends Cuerpo {
   vida: number;
   vidaMax: number;
   ocupado: boolean;
@@ -60,7 +60,7 @@ interface Vehiculo extends Cuerpo {
   destruido: boolean;
 }
 
-interface Particula {
+export interface Particula {
   x: number;
   y: number;
   vx: number;
@@ -70,7 +70,7 @@ interface Particula {
   tam: number;
 }
 
-interface Paleta {
+export interface Paleta {
   cielo: [string, string];
   lejos: string;
   cerca: string;
@@ -81,7 +81,7 @@ interface Paleta {
   detalle: string;
 }
 
-const PALETA: Record<Tema, Paleta> = {
+export const PALETA: Record<Tema, Paleta> = {
   selva: { cielo: ['#3d6b4f', '#a7c98a'], lejos: '#2c5038', cerca: '#23432e', ventana: '#000', suelo: '#6a4a2a', oscuro: '#4a321c', borde: '#4f9a3a', detalle: '#7ac04a' },
   desierto: { cielo: ['#e0915a', '#f6d39a'], lejos: '#c47a48', cerca: '#a8653a', ventana: '#000', suelo: '#c49a5e', oscuro: '#9a7442', borde: '#e2be7c', detalle: '#f0d49a' },
   ciudad: { cielo: ['#3a4660', '#8a96b0'], lejos: '#2a3346', cerca: '#202838', ventana: '#ffd36a', suelo: '#55555e', oscuro: '#3a3a42', borde: '#8a8a94', detalle: '#a8a8b2' },
@@ -126,28 +126,28 @@ export class Mundo {
   private rng: Rng;
   private modoMision!: Modo;
   private escala = 1;
-  private jugador = {
+  jugador = {
     x: 40, y: 150, w: 14, h: 26, vx: 0, vy: 0, enSuelo: false,
     mira: 1 as 1 | -1, golpes: 1, invul: 0, cd: 0, arma: 'pistola' as Arma, municion: Infinity, granadas: 10,
-    agachado: false, paso: 0,
+    agachado: false, paso: 0, apunteX: 1, apunteY: 0,
   };
-  private camX = 0;
+  camX = 0;
   private siguienteSpawn = 0;
-  private enemigos: Enemigo[] = [];
-  private balas: Proyectil[] = [];
-  private balasEnemigas: Proyectil[] = [];
-  private rehenes: Rehen[] = [];
-  private cajas: Array<Rect & { vida: number }> = [];
-  private recogibles: Recogible[] = [];
-  private vehiculo: Vehiculo | null = null;
-  private particulas: Particula[] = [];
+  enemigos: Enemigo[] = [];
+  balas: Proyectil[] = [];
+  balasEnemigas: Proyectil[] = [];
+  rehenes: Rehen[] = [];
+  cajas: Array<Rect & { vida: number }> = [];
+  recogibles: Recogible[] = [];
+  vehiculo: Vehiculo | null = null;
+  particulas: Particula[] = [];
   private jefeAparecido = false;
   private jefeVencido = 0;
-  private temblor = 0;
-  private tiempo = 0;
-  private aviso = { texto: '', t: 0 };
+  temblor = 0;
+  tiempo = 0;
+  aviso = { texto: '', t: 0 };
   /** Huecos del suelo donde se cae (de x0 a x1). */
-  private fosos: Array<{ x0: number; x1: number }> = [];
+  fosos: Array<{ x0: number; x1: number }> = [];
 
   constructor(private modo: () => Modo, private eventos: EventosMundo, mision = 1, semilla = Date.now()) {
     this.rng = crearRng(semilla);
@@ -321,6 +321,8 @@ export class Mundo {
 
     // Disparo.
     const dir = direccionDisparo(entrada.x, entrada.y, j.mira, j.enSuelo || !!v);
+    j.apunteX = dir.dx;
+    j.apunteY = dir.dy;
     if (entrada.activo('disparar') && j.cd <= 0) {
       if (v) {
         j.cd = 0.08;
@@ -697,280 +699,9 @@ export class Mundo {
 
   /* ---------- Dibujo ---------- */
 
-  dibujar(ctx: CanvasRenderingContext2D, efectos = true) {
-    const pal = PALETA[this.mision.tema];
-    const cielo = ctx.createLinearGradient(0, 0, 0, ALTO_MUNDO);
-    cielo.addColorStop(0, pal.cielo[0]);
-    cielo.addColorStop(1, pal.cielo[1]);
-    ctx.fillStyle = cielo;
-    ctx.fillRect(0, 0, ANCHO_VISTA, ALTO_MUNDO);
+  /* ---------- HUD (la escena se dibuja en 3D, ver escena3d.ts) ---------- */
 
-    // Fondo con paralaje.
-    ctx.fillStyle = pal.lejos;
-    const desp = this.camX * 0.3;
-    for (let i = -1; i < 8; i++) {
-      const bx = i * 90 - (desp % 90);
-      const alto = 50 + ((i + Math.floor(desp / 90)) * 37) % 60;
-      if (this.mision.tema === 'ciudad' || this.mision.tema === 'base') ctx.fillRect(bx, 200 - alto, 60, alto + 40);
-      else {
-        ctx.beginPath();
-        ctx.moveTo(bx - 20, 230);
-        ctx.lineTo(bx + 30, 200 - alto);
-        ctx.lineTo(bx + 80, 230);
-        ctx.fill();
-      }
-    }
-
-    // Capa cercana del fondo.
-    ctx.fillStyle = pal.cerca;
-    const desp2 = this.camX * 0.6;
-    for (let i = -1; i < 12; i++) {
-      const k = i + Math.floor(desp2 / 50);
-      const bx = i * 50 - (desp2 % 50);
-      const alto = 25 + ((k * 53) % 35);
-      if (this.mision.tema === 'selva') {
-        ctx.fillRect(bx + 22, 230 - alto, 5, alto);
-        ctx.beginPath();
-        ctx.arc(bx + 24, 230 - alto, 16, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (this.mision.tema === 'desierto') {
-        ctx.fillRect(bx + 20, 232 - alto * 0.6, 6, alto * 0.6);
-        ctx.fillRect(bx + 14, 232 - alto * 0.45, 6, 3);
-      } else {
-        ctx.fillRect(bx, 232 - alto, 40, alto);
-        ctx.fillStyle = pal.ventana;
-        for (let y = 236 - alto; y < 222; y += 9) ctx.fillRect(bx + 6 + ((k + y) % 3) * 10, y, 4, 4);
-        ctx.fillStyle = pal.cerca;
-      }
-    }
-
-    ctx.save();
-    const tx = efectos && this.temblor > 0 ? (this.rng.siguiente() - 0.5) * this.temblor : 0;
-    const ty = efectos && this.temblor > 0 ? (this.rng.siguiente() - 0.5) * this.temblor : 0;
-    ctx.translate(Math.round(-this.camX + tx), Math.round(ty));
-
-    this.dibujarFosos(ctx);
-    for (const r of this.mision.suelo) {
-      if (r.y <= 50 || r.x + r.w < this.camX || r.x > this.camX + ANCHO_VISTA) continue;
-      this.dibujarBloque(ctx, r, pal);
-    }
-    for (const p of this.mision.plataformas) {
-      if (p.x + p.w < this.camX || p.x > this.camX + ANCHO_VISTA) continue;
-      // Tablones de madera con soportes.
-      ctx.fillStyle = '#4a3420';
-      ctx.fillRect(p.x + 6, p.y + p.h, 4, 14);
-      ctx.fillRect(p.x + p.w - 10, p.y + p.h, 4, 14);
-      ctx.fillStyle = '#8a6238';
-      ctx.fillRect(p.x, p.y, p.w, p.h);
-      ctx.fillStyle = '#5e4024';
-      for (let x = p.x + 12; x < p.x + p.w; x += 12) ctx.fillRect(x, p.y, 1, p.h);
-      ctx.fillStyle = '#b08350';
-      ctx.fillRect(p.x, p.y, p.w, 2);
-    }
-
-    for (const c of this.cajas) {
-      ctx.fillStyle = '#a0703a';
-      ctx.fillRect(c.x, c.y, c.w, c.h);
-      ctx.strokeStyle = '#5a3a1a';
-      ctx.strokeRect(c.x + 1, c.y + 1, c.w - 2, c.h - 2);
-    }
-    for (const r of this.rehenes) {
-      ctx.fillStyle = '#e8d2a6';
-      ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.fillStyle = '#7a5a3a';
-      ctx.fillRect(r.x - 1, r.y - 4, r.w + 2, 5);
-      if (!r.libre) {
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 9px system-ui';
-        ctx.fillText('¡Ayuda!', r.x - 8, r.y - 8 + Math.sin(this.tiempo * 4) * 2);
-      }
-    }
-    for (const o of this.recogibles) {
-      ctx.fillStyle = o.tipo === 'granadas' ? '#7a8a3a' : '#2b6cff';
-      ctx.fillRect(o.x, o.y, o.w, o.h);
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 10px system-ui';
-      ctx.fillText(o.tipo === 'granadas' ? 'G' : o.arma!, o.x + 3, o.y + 11);
-    }
-
-    const v = this.vehiculo;
-    if (v && !v.destruido) this.dibujarVehiculo(ctx, v);
-    for (const e of this.enemigos) this.dibujarEnemigo(ctx, e);
-    if (!v?.ocupado) this.dibujarJugador(ctx);
-
-    for (const b of [...this.balas, ...this.balasEnemigas]) {
-      ctx.fillStyle = b.color;
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    for (const p of this.particulas) {
-      ctx.globalAlpha = Math.min(1, p.vida * 2);
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x, p.y, p.tam, p.tam);
-    }
-    ctx.globalAlpha = 1;
-    ctx.restore();
-
-    this.dibujarHud(ctx);
-  }
-
-  /** Fosos: pozo oscuro con pinchos, bordes de peligro y un cartel antes de cada uno. */
-  private dibujarFosos(ctx: CanvasRenderingContext2D) {
-    for (const f of this.fosos) {
-      if (f.x1 < this.camX - 60 || f.x0 > this.camX + ANCHO_VISTA + 60) continue;
-      const w = f.x1 - f.x0;
-      const fondo = ctx.createLinearGradient(0, 200, 0, ALTO_MUNDO);
-      fondo.addColorStop(0, '#1a0d08');
-      fondo.addColorStop(1, '#000');
-      ctx.fillStyle = fondo;
-      ctx.fillRect(f.x0, 200, w, ALTO_MUNDO - 200);
-      // Pinchos en el fondo.
-      ctx.fillStyle = '#9aa0a8';
-      for (let x = f.x0; x < f.x1; x += 8) {
-        ctx.beginPath();
-        ctx.moveTo(x, ALTO_MUNDO);
-        ctx.lineTo(x + 4, ALTO_MUNDO - 12);
-        ctx.lineTo(x + 8, ALTO_MUNDO);
-        ctx.fill();
-      }
-      ctx.fillStyle = '#c0392b';
-      for (let x = f.x0; x < f.x1; x += 8) ctx.fillRect(x + 3, ALTO_MUNDO - 12, 2, 3);
-      // Resplandor rojo que late, visible aunque el foso sea estrecho.
-      ctx.globalAlpha = 0.25 + 0.15 * Math.sin(this.tiempo * 5);
-      ctx.fillStyle = '#ff3a1a';
-      ctx.fillRect(f.x0, ALTO_MUNDO - 30, w, 30);
-      ctx.globalAlpha = 1;
-      // Cartel de aviso antes del foso.
-      const sx = f.x0 - 26;
-      ctx.fillStyle = '#5a3a1a';
-      ctx.fillRect(sx + 7, 200, 3, 30);
-      ctx.fillStyle = '#ffd23a';
-      ctx.beginPath();
-      ctx.moveTo(sx + 8.5, 186);
-      ctx.lineTo(sx + 18, 202);
-      ctx.lineTo(sx - 1, 202);
-      ctx.fill();
-      ctx.fillStyle = '#000';
-      ctx.fillRect(sx + 7.5, 191, 2, 6);
-      ctx.fillRect(sx + 7.5, 198, 2, 2);
-    }
-  }
-
-  private dibujarBloque(ctx: CanvasRenderingContext2D, r: Rect, pal: Paleta) {
-    ctx.fillStyle = pal.suelo;
-    ctx.fillRect(r.x, r.y, r.w, r.h);
-    // Estratos y piedras con un patrón fijo (no parpadea al moverse).
-    ctx.fillStyle = pal.oscuro;
-    for (let y = r.y + 16; y < r.y + r.h; y += 14) ctx.fillRect(r.x, y, r.w, 2);
-    for (let x = Math.floor(r.x / 23) * 23; x < r.x + r.w; x += 23) {
-      const k = Math.abs(Math.floor(x / 23) * 7919) % 97;
-      if (x < r.x) continue;
-      ctx.fillRect(x, r.y + 10 + (k % 28), 5 + (k % 4), 3);
-    }
-    // Superficie y bordes del precipicio bien marcados.
-    ctx.fillStyle = pal.borde;
-    ctx.fillRect(r.x, r.y, r.w, 6);
-    ctx.fillStyle = pal.detalle;
-    for (let x = Math.ceil(r.x / 9) * 9; x < r.x + r.w - 2; x += 9) ctx.fillRect(x, r.y - 2, 2, 3);
-    const izq = this.fosos.some((f) => Math.abs(f.x1 - r.x) < 1);
-    const der = this.fosos.some((f) => Math.abs(f.x0 - (r.x + r.w)) < 1);
-    for (const [hay, x] of [[izq, r.x], [der, r.x + r.w - 4]] as const) {
-      if (!hay) continue;
-      ctx.fillStyle = '#000a';
-      ctx.fillRect(x, r.y + 6, 4, r.h);
-      // Franja de peligro amarilla y negra en el borde.
-      for (let i = 0; i < 4; i++) {
-        ctx.fillStyle = i % 2 ? '#111' : '#ffd23a';
-        ctx.fillRect(x, r.y + i * 3, 4, 3);
-      }
-    }
-  }
-
-  private dibujarJugador(ctx: CanvasRenderingContext2D) {    const j = this.jugador;
-    if (j.invul > 0 && Math.floor(j.invul * 16) % 2) return;
-    const pierna = j.enSuelo && j.vx !== 0 ? Math.sin(j.paso * 18) * 3 : 0;
-    ctx.fillStyle = '#2c4a7a';
-    ctx.fillRect(j.x + 2, j.y + j.h - 8, 4, 8 - Math.abs(pierna));
-    ctx.fillRect(j.x + 8, j.y + j.h - 8, 4, 8);
-    ctx.fillStyle = '#4a7a3a';
-    ctx.fillRect(j.x, j.y + 6, j.w, j.h - 14);
-    ctx.fillStyle = '#f0c896';
-    ctx.fillRect(j.x + 3, j.y, 9, 7);
-    ctx.fillStyle = '#c0392b';
-    ctx.fillRect(j.x + 2, j.y - 1, 11, 3);
-    ctx.fillStyle = '#333';
-    ctx.fillRect(j.mira > 0 ? j.x + j.w - 2 : j.x - 8, j.y + (j.agachado ? 5 : 8), 10, 3);
-  }
-
-  private dibujarVehiculo(ctx: CanvasRenderingContext2D, v: Vehiculo) {
-    const j = this.jugador;
-    if (v.ocupado && j.invul > 0 && Math.floor(j.invul * 16) % 2) ctx.globalAlpha = 0.5;
-    ctx.fillStyle = '#5a6a3a';
-    ctx.fillRect(v.x, v.y + 8, v.w, v.h - 14);
-    ctx.fillStyle = '#3a4426';
-    ctx.fillRect(v.x + 2, v.y + v.h - 8, v.w - 4, 8);
-    ctx.fillStyle = '#6f8048';
-    ctx.fillRect(v.x + 10, v.y, 18, 10);
-    ctx.fillStyle = '#333';
-    ctx.fillRect(j.mira > 0 ? v.x + 26 : v.x - 6, v.y + 3, 18, 4);
-    ctx.globalAlpha = 1;
-    if (!v.ocupado) {
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 9px system-ui';
-      ctx.fillText('¡Súbete!', v.x, v.y - 6 + Math.sin(this.tiempo * 4) * 2);
-    } else {
-      ctx.fillStyle = '#000a';
-      ctx.fillRect(v.x, v.y - 8, v.w, 4);
-      ctx.fillStyle = '#58e07a';
-      ctx.fillRect(v.x, v.y - 8, (v.w * v.vida) / v.vidaMax, 4);
-    }
-  }
-
-  private dibujarEnemigo(ctx: CanvasRenderingContext2D, e: Enemigo) {
-    const blanco = e.flash > 0;
-    switch (e.tipo) {
-      case 'soldado':
-      case 'granadero':
-        ctx.fillStyle = blanco ? '#fff' : e.tipo === 'soldado' ? '#8a6a3a' : '#7a4a3a';
-        ctx.fillRect(e.x, e.y + 6, e.w, e.h - 6);
-        ctx.fillStyle = blanco ? '#fff' : '#e0b088';
-        ctx.fillRect(e.x + 3, e.y, 9, 7);
-        ctx.fillStyle = '#4a3a2a';
-        ctx.fillRect(e.x + 2, e.y - 1, 11, 3);
-        ctx.fillStyle = '#333';
-        if (e.tipo === 'soldado') ctx.fillRect(e.mira > 0 ? e.x + e.w - 2 : e.x - 8, e.y + 9, 10, 3);
-        break;
-      case 'torreta':
-        ctx.fillStyle = blanco ? '#fff' : '#6a6a72';
-        ctx.fillRect(e.x, e.y + 6, e.w, e.h - 6);
-        ctx.beginPath();
-        ctx.arc(e.x + e.w / 2, e.y + 8, 8, Math.PI, 0);
-        ctx.fill();
-        break;
-      case 'tanque':
-      case 'jefe': {
-        const jefe = e.tipo === 'jefe';
-        ctx.fillStyle = blanco ? '#fff' : jefe ? '#7a2a2a' : '#6a5a3a';
-        ctx.fillRect(e.x, e.y + e.h * 0.3, e.w, e.h * 0.5);
-        ctx.fillStyle = blanco ? '#fff' : '#3a3026';
-        ctx.fillRect(e.x + 2, e.y + e.h * 0.78, e.w - 4, e.h * 0.22);
-        ctx.fillStyle = blanco ? '#fff' : jefe ? '#9a3a3a' : '#7f6d48';
-        ctx.fillRect(e.x + e.w * 0.25, e.y, e.w * 0.45, e.h * 0.35);
-        ctx.fillStyle = '#222';
-        ctx.fillRect(e.x - e.w * 0.25, e.y + e.h * 0.12, e.w * 0.5, jefe ? 8 : 4);
-        break;
-      }
-      case 'dron':
-        ctx.fillStyle = blanco ? '#fff' : '#4a4a5a';
-        ctx.fillRect(e.x, e.y + 4, e.w, e.h - 4);
-        ctx.fillStyle = '#aaa';
-        ctx.fillRect(e.x - 4 + Math.sin(this.tiempo * 40) * 3, e.y, e.w + 8, 2);
-        break;
-    }
-  }
-
-  private dibujarHud(ctx: CanvasRenderingContext2D) {
+  dibujarHud(ctx: CanvasRenderingContext2D) {
     const j = this.jugador;
     ctx.fillStyle = '#000a';
     ctx.fillRect(0, 0, ANCHO_VISTA, 22);

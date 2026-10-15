@@ -1,3 +1,4 @@
+import { DEFAULT_LOOK, LOOK_OPTIONS, type Look } from './game/characters';
 import { configPorDefecto, normalizarConfig, type Configuracion } from './settings';
 
 export interface Record_ {
@@ -13,13 +14,15 @@ export interface Guardado {
   /** Misión más alta desbloqueada (se puede empezar desde ella). */
   misionMax: number;
   records: Record_[];
+  /** Apariencia del soldado (mismo sistema de personajes que el Arcade). */
+  look: Look;
   config: Configuracion;
 }
 
 export const CLAVE_GUARDADO = 'mcl-slug:v1';
 const MAX_RECORDS = 10;
 
-export const guardadoNuevo = (): Guardado => ({ v: 1, nombre: null, misionMax: 1, records: [], config: configPorDefecto() });
+export const guardadoNuevo = (): Guardado => ({ v: 1, nombre: null, misionMax: 1, records: [], look: { ...DEFAULT_LOOK, shirt: 0x43a047, bottomColor: 0x37474f, hat: 'helmet', hatColor: 0x2e7d32 }, config: configPorDefecto() });
 
 const esObjeto = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const entero = (v: unknown, min: number, max: number, porDefecto: number) =>
@@ -42,8 +45,21 @@ export function normalizarGuardado(entrada: unknown): Guardado {
     nombre: typeof entrada.nombre === 'string' ? limpiarNombre(entrada.nombre) : null,
     misionMax: entero(entrada.misionMax, 1, 1e6, 1),
     records,
+    look: normalizarLook(entrada.look, base.look),
     config: normalizarConfig(entrada.config),
   };
+}
+
+/** Cada rasgo debe ser una de las opciones conocidas; si no, se usa el de por defecto. */
+export function normalizarLook(entrada: unknown, porDefecto: Look): Look {
+  if (!esObjeto(entrada)) return { ...porDefecto };
+  const look = { ...porDefecto } as Record<string, unknown>;
+  for (const [clave, opciones] of Object.entries(LOOK_OPTIONS)) {
+    const valor = entrada[clave];
+    const validos = (opciones as readonly unknown[]).map((o) => (typeof o === 'object' && o ? (o as { id: string }).id : o));
+    if (validos.includes(valor)) look[clave] = valor;
+  }
+  return look as unknown as Look;
 }
 
 export function agregarRecord(g: Guardado, r: Record_): boolean {

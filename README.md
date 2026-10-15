@@ -1,6 +1,6 @@
 # McL Slug
 
-Juego de acción 2D con desplazamiento lateral para el navegador, inspirado en Metal Slug. Las misiones no se acaban: el escenario va rotando (selva, desierto, ciudad y base) y cada misión termina con un jefe.
+Juego de acción con desplazamiento lateral, en 3D, para el navegador, inspirado en Metal Slug. Las misiones no se acaban: el escenario va rotando (selva, desierto, ciudad y base) y cada misión termina con un jefe.
 
 - Rescata rehenes para conseguir armas: H, R, F y S.
 - Hay granadas y un tanque que puedes conducir.
