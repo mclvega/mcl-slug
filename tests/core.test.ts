@@ -5,7 +5,7 @@ import { generarMision } from '../src/core/level';
 import { PASO } from '../src/core/loop';
 import { crearRng } from '../src/core/rng';
 import { direccionDisparo } from '../src/core/weapons';
-import { Mundo } from '../src/game/mundo';
+import { Mundo, calcularFosos } from '../src/game/mundo';
 import { normalizarConfig } from '../src/settings';
 import { agregarRecord, guardadoNuevo, normalizarGuardado } from '../src/storage';
 
@@ -29,6 +29,17 @@ describe('misiones', () => {
     const b = generarMision(5, rng);
     expect(a.tema).toBe(b.tema);
     expect(b.largo).toBeGreaterThan(a.largo);
+  });
+});
+
+describe('fosos', () => {
+  it('detecta los huecos del suelo e ignora los muros', () => {
+    const suelo = [{ x: 0, y: 230, w: 100, h: 80 }, { x: 150, y: 230, w: 100, h: 80 }, { x: 250, y: 210, w: 50, h: 100 }, { x: -40, y: 0, w: 40, h: 310 }];
+    expect(calcularFosos(suelo)).toEqual([{ x0: 100, x1: 150 }]);
+  });
+
+  it('las misiones tienen fosos', () => {
+    expect(calcularFosos(generarMision(3, crearRng(2)).suelo).length).toBeGreaterThan(0);
   });
 });
 

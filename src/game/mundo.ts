@@ -70,11 +70,22 @@ interface Particula {
   tam: number;
 }
 
-const PALETA: Record<Tema, { cielo: [string, string]; lejos: string; suelo: string; borde: string }> = {
-  selva: { cielo: ['#3d6b4f', '#a7c98a'], lejos: '#2c5038', suelo: '#5a3d22', borde: '#4f8a3a' },
-  desierto: { cielo: ['#e0915a', '#f6d39a'], lejos: '#c47a48', suelo: '#b88a52', borde: '#d9b070' },
-  ciudad: { cielo: ['#3a4660', '#8a96b0'], lejos: '#2a3346', suelo: '#4a4a52', borde: '#76767f' },
-  base: { cielo: ['#1c1f2a', '#4b4f63'], lejos: '#141720', suelo: '#3b3a36', borde: '#8a7a3a' },
+interface Paleta {
+  cielo: [string, string];
+  lejos: string;
+  cerca: string;
+  ventana: string;
+  suelo: string;
+  oscuro: string;
+  borde: string;
+  detalle: string;
+}
+
+const PALETA: Record<Tema, Paleta> = {
+  selva: { cielo: ['#3d6b4f', '#a7c98a'], lejos: '#2c5038', cerca: '#23432e', ventana: '#000', suelo: '#6a4a2a', oscuro: '#4a321c', borde: '#4f9a3a', detalle: '#7ac04a' },
+  desierto: { cielo: ['#e0915a', '#f6d39a'], lejos: '#c47a48', cerca: '#a8653a', ventana: '#000', suelo: '#c49a5e', oscuro: '#9a7442', borde: '#e2be7c', detalle: '#f0d49a' },
+  ciudad: { cielo: ['#3a4660', '#8a96b0'], lejos: '#2a3346', cerca: '#202838', ventana: '#ffd36a', suelo: '#55555e', oscuro: '#3a3a42', borde: '#8a8a94', detalle: '#a8a8b2' },
+  base: { cielo: ['#1c1f2a', '#4b4f63'], lejos: '#141720', cerca: '#10131a', ventana: '#ff5a4a', suelo: '#45443e', oscuro: '#2e2d28', borde: '#9a8a3a', detalle: '#e0c040' },
 };
 
 const NOMBRE_TEMA: Record<Tema, string> = { selva: 'Selva', desierto: 'Desierto', ciudad: 'Ciudad', base: 'Base enemiga' };
@@ -91,6 +102,17 @@ const BASE_ENEMIGO: Record<TipoEnemigo, { w: number; h: number; vida: number; pu
 export interface EventosMundo {
   misionCompleta: (resumen: { mision: number; puntos: number }) => void;
   fin: (resumen: { mision: number; puntos: number }) => void;
+}
+
+/** Huecos entre bloques de suelo consecutivos. */
+export function calcularFosos(suelo: Rect[]): Array<{ x0: number; x1: number }> {
+  const pisos = suelo.filter((r) => r.y > 50).sort((a, b) => a.x - b.x);
+  const fosos: Array<{ x0: number; x1: number }> = [];
+  for (let i = 1; i < pisos.length; i++) {
+    const x0 = pisos[i - 1].x + pisos[i - 1].w;
+    if (pisos[i].x - x0 > 1) fosos.push({ x0, x1: pisos[i].x });
+  }
+  return fosos;
 }
 
 const choca = (a: Rect, b: Rect) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -124,6 +146,8 @@ export class Mundo {
   private temblor = 0;
   private tiempo = 0;
   private aviso = { texto: '', t: 0 };
+  /** Huecos del suelo donde se cae (de x0 a x1). */
+  private fosos: Array<{ x0: number; x1: number }> = [];
 
   constructor(private modo: () => Modo, private eventos: EventosMundo, mision = 1, semilla = Date.now()) {
     this.rng = crearRng(semilla);
@@ -135,6 +159,7 @@ export class Mundo {
 
   empezarMision(numero: number) {
     this.mision = generarMision(numero, this.rng);
+    this.fosos = calcularFosos(this.mision.suelo);
     this.modoMision = this.modo();
     this.escala = escalaMision(numero);
     this.camX = 0;
@@ -696,24 +721,51 @@ export class Mundo {
       }
     }
 
+    // Capa cercana del fondo.
+    ctx.fillStyle = pal.cerca;
+    const desp2 = this.camX * 0.6;
+    for (let i = -1; i < 12; i++) {
+      const k = i + Math.floor(desp2 / 50);
+      const bx = i * 50 - (desp2 % 50);
+      const alto = 25 + ((k * 53) % 35);
+      if (this.mision.tema === 'selva') {
+        ctx.fillRect(bx + 22, 230 - alto, 5, alto);
+        ctx.beginPath();
+        ctx.arc(bx + 24, 230 - alto, 16, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (this.mision.tema === 'desierto') {
+        ctx.fillRect(bx + 20, 232 - alto * 0.6, 6, alto * 0.6);
+        ctx.fillRect(bx + 14, 232 - alto * 0.45, 6, 3);
+      } else {
+        ctx.fillRect(bx, 232 - alto, 40, alto);
+        ctx.fillStyle = pal.ventana;
+        for (let y = 236 - alto; y < 222; y += 9) ctx.fillRect(bx + 6 + ((k + y) % 3) * 10, y, 4, 4);
+        ctx.fillStyle = pal.cerca;
+      }
+    }
+
     ctx.save();
     const tx = efectos && this.temblor > 0 ? (this.rng.siguiente() - 0.5) * this.temblor : 0;
     const ty = efectos && this.temblor > 0 ? (this.rng.siguiente() - 0.5) * this.temblor : 0;
     ctx.translate(Math.round(-this.camX + tx), Math.round(ty));
 
+    this.dibujarFosos(ctx);
     for (const r of this.mision.suelo) {
-      if (r.x + r.w < this.camX || r.x > this.camX + ANCHO_VISTA) continue;
-      ctx.fillStyle = pal.suelo;
-      ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.fillStyle = pal.borde;
-      ctx.fillRect(r.x, r.y, r.w, 5);
+      if (r.y <= 50 || r.x + r.w < this.camX || r.x > this.camX + ANCHO_VISTA) continue;
+      this.dibujarBloque(ctx, r, pal);
     }
-    ctx.fillStyle = '#6a5a4a';
     for (const p of this.mision.plataformas) {
+      if (p.x + p.w < this.camX || p.x > this.camX + ANCHO_VISTA) continue;
+      // Tablones de madera con soportes.
+      ctx.fillStyle = '#4a3420';
+      ctx.fillRect(p.x + 6, p.y + p.h, 4, 14);
+      ctx.fillRect(p.x + p.w - 10, p.y + p.h, 4, 14);
+      ctx.fillStyle = '#8a6238';
       ctx.fillRect(p.x, p.y, p.w, p.h);
-      ctx.fillStyle = pal.borde;
-      ctx.fillRect(p.x, p.y, p.w, 3);
-      ctx.fillStyle = '#6a5a4a';
+      ctx.fillStyle = '#5e4024';
+      for (let x = p.x + 12; x < p.x + p.w; x += 12) ctx.fillRect(x, p.y, 1, p.h);
+      ctx.fillStyle = '#b08350';
+      ctx.fillRect(p.x, p.y, p.w, 2);
     }
 
     for (const c of this.cajas) {
@@ -763,8 +815,79 @@ export class Mundo {
     this.dibujarHud(ctx);
   }
 
-  private dibujarJugador(ctx: CanvasRenderingContext2D) {
-    const j = this.jugador;
+  /** Fosos: pozo oscuro con pinchos, bordes de peligro y un cartel antes de cada uno. */
+  private dibujarFosos(ctx: CanvasRenderingContext2D) {
+    for (const f of this.fosos) {
+      if (f.x1 < this.camX - 60 || f.x0 > this.camX + ANCHO_VISTA + 60) continue;
+      const w = f.x1 - f.x0;
+      const fondo = ctx.createLinearGradient(0, 200, 0, ALTO_MUNDO);
+      fondo.addColorStop(0, '#1a0d08');
+      fondo.addColorStop(1, '#000');
+      ctx.fillStyle = fondo;
+      ctx.fillRect(f.x0, 200, w, ALTO_MUNDO - 200);
+      // Pinchos en el fondo.
+      ctx.fillStyle = '#9aa0a8';
+      for (let x = f.x0; x < f.x1; x += 8) {
+        ctx.beginPath();
+        ctx.moveTo(x, ALTO_MUNDO);
+        ctx.lineTo(x + 4, ALTO_MUNDO - 12);
+        ctx.lineTo(x + 8, ALTO_MUNDO);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#c0392b';
+      for (let x = f.x0; x < f.x1; x += 8) ctx.fillRect(x + 3, ALTO_MUNDO - 12, 2, 3);
+      // Resplandor rojo que late, visible aunque el foso sea estrecho.
+      ctx.globalAlpha = 0.25 + 0.15 * Math.sin(this.tiempo * 5);
+      ctx.fillStyle = '#ff3a1a';
+      ctx.fillRect(f.x0, ALTO_MUNDO - 30, w, 30);
+      ctx.globalAlpha = 1;
+      // Cartel de aviso antes del foso.
+      const sx = f.x0 - 26;
+      ctx.fillStyle = '#5a3a1a';
+      ctx.fillRect(sx + 7, 200, 3, 30);
+      ctx.fillStyle = '#ffd23a';
+      ctx.beginPath();
+      ctx.moveTo(sx + 8.5, 186);
+      ctx.lineTo(sx + 18, 202);
+      ctx.lineTo(sx - 1, 202);
+      ctx.fill();
+      ctx.fillStyle = '#000';
+      ctx.fillRect(sx + 7.5, 191, 2, 6);
+      ctx.fillRect(sx + 7.5, 198, 2, 2);
+    }
+  }
+
+  private dibujarBloque(ctx: CanvasRenderingContext2D, r: Rect, pal: Paleta) {
+    ctx.fillStyle = pal.suelo;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    // Estratos y piedras con un patrón fijo (no parpadea al moverse).
+    ctx.fillStyle = pal.oscuro;
+    for (let y = r.y + 16; y < r.y + r.h; y += 14) ctx.fillRect(r.x, y, r.w, 2);
+    for (let x = Math.floor(r.x / 23) * 23; x < r.x + r.w; x += 23) {
+      const k = Math.abs(Math.floor(x / 23) * 7919) % 97;
+      if (x < r.x) continue;
+      ctx.fillRect(x, r.y + 10 + (k % 28), 5 + (k % 4), 3);
+    }
+    // Superficie y bordes del precipicio bien marcados.
+    ctx.fillStyle = pal.borde;
+    ctx.fillRect(r.x, r.y, r.w, 6);
+    ctx.fillStyle = pal.detalle;
+    for (let x = Math.ceil(r.x / 9) * 9; x < r.x + r.w - 2; x += 9) ctx.fillRect(x, r.y - 2, 2, 3);
+    const izq = this.fosos.some((f) => Math.abs(f.x1 - r.x) < 1);
+    const der = this.fosos.some((f) => Math.abs(f.x0 - (r.x + r.w)) < 1);
+    for (const [hay, x] of [[izq, r.x], [der, r.x + r.w - 4]] as const) {
+      if (!hay) continue;
+      ctx.fillStyle = '#000a';
+      ctx.fillRect(x, r.y + 6, 4, r.h);
+      // Franja de peligro amarilla y negra en el borde.
+      for (let i = 0; i < 4; i++) {
+        ctx.fillStyle = i % 2 ? '#111' : '#ffd23a';
+        ctx.fillRect(x, r.y + i * 3, 4, 3);
+      }
+    }
+  }
+
+  private dibujarJugador(ctx: CanvasRenderingContext2D) {    const j = this.jugador;
     if (j.invul > 0 && Math.floor(j.invul * 16) % 2) return;
     const pierna = j.enSuelo && j.vx !== 0 ? Math.sin(j.paso * 18) * 3 : 0;
     ctx.fillStyle = '#2c4a7a';
