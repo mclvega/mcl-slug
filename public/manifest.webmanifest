@@ -3,7 +3,7 @@
   "short_name": "McL Slug",
   "start_url": "/",
   "display": "fullscreen",
-  "background_color": "#120d08",
-  "theme_color": "#120d08",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
 }
