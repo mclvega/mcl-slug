@@ -531,10 +531,20 @@ export class Mundo {
           e.vx = Math.sin(e.t * (furioso ? 0.9 : 0.6)) * 60;
           this.mover(e, dt);
           e.x = Math.max(izq, Math.min(der, e.x));
+          // Dispara hacia el lado donde está el jugador, también si lo rodea por detrás.
+          const lado = bx > cx ? 1 : -1;
+          const boca = lado > 0 ? e.x + e.w - 10 : e.x + 10;
           if (e.cd <= 0) {
             e.cd = (furioso ? 1.6 : 2.4) * espera;
-            for (let k = 0; k < 3; k++) this.balaEnemiga(e.x + 10, e.y + 10, -(120 + k * 70), -220 - k * 20, true, 34);
-            if (furioso) for (let k = 0; k < 4; k++) this.balaEnemiga(e.x, e.y + 40 + k * 3, -200 - k * 30, 0, false, 0);
+            for (let k = 0; k < 3; k++) this.balaEnemiga(boca, e.y + 10, lado * (120 + k * 70), -220 - k * 20, true, 34);
+            if (furioso) for (let k = 0; k < 4; k++) this.balaEnemiga(lado > 0 ? e.x + e.w : e.x, e.y + 40 + k * 3, lado * (200 + k * 30), 0, false, 0);
+          }
+          // Cuerpo sólido: tocar al jefe hace daño y empuja fuera, sin poder meterse dentro.
+          if (choca(e, blanco)) {
+            const cuerpo = this.vehiculo?.ocupado ? this.vehiculo : j;
+            const cabeDetras = e.x + e.w + cuerpo.w <= this.mision.arena + ANCHO_VISTA;
+            cuerpo.x = cuerpo.x + cuerpo.w / 2 > cx && cabeDetras ? e.x + e.w + 1 : e.x - cuerpo.w - 1;
+            this.herirJugador();
           }
           if (furioso) {
             e.invocar -= dt;
