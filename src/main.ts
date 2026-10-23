@@ -36,7 +36,7 @@ const entrada = new Entrada(
 );
 let mundo: Mundo | null = null;
 
-iniciarPantallaCompleta(() => app.g.config.pantallaCompleta);
+iniciarPantallaCompleta(() => app.g.config.pantallaCompleta, 'landscape');
 app.aplicarConfig();
 if (matchMedia('(pointer: coarse)').matches) document.body.classList.add('tactil');
 
